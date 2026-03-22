@@ -1,0 +1,550 @@
+---
+title: "bellabeat_analysis_casestudy"
+author: "Takuya SHIKI"
+date: "2026-03-20"
+output: html_document
+---
+
+# Who can keep wearing wearables?
+
+## 1. Background
+
+Wearable devices are widely used in today's world.
+However, many of us struggle to maintain healthy habits, such as using healthcare products on a daily basis.
+
+## 2. Project Goal
+
+This projects aims to analyze some behavioral patterns which can influence whether or not one is going to be consistent users of wearable devices.
+In addition, I provide actionable insights for segmented marketing strategies at the end of this report.
+
+## 3. Data Source
+
+[FitBit Fitness Tracker Data (Kaggle)](https://www.kaggle.com/datasets/arashnic/fitbit)
+
+The dataset contains activity and sleep records collected from approximately 30 users between March 2016 and May 2016.
+
+## 4. Data Limitation
+
+The data sets do not show when users started and finished using the devices.
+Therefore, my analysis focuses on a healthy habit consistency within the reported period (03.12.2016-05.12.2016), instead of a long-term retention.
+
+Note: Sleep data are only available for a smaller subset of users from April to May.
+
+## 5. Hypothesis
+
+Users can be classified into three groups:
+
+* Consistent Active Users: Those who almost always keep healthy habits (e.g., higher activity levels and more daily steps)
+* Irregular Users: Those who occasionally engage in healthy behaviors (e.g., spontaneous high activities and a large fluctuation in daily steps
+* Low Engagement Users: Those who show unhealthy behaviors (e.g., lower activity levels and sedentary)
+
+## 6. Data Preparation
+
+Overall, I decided to select daily data sets because I am interested in a daily comparison between users, rather than deepening one specific person's activities.
+
+The followings are the filenames and column names I chose for this analysis:
+
+### dailyActivity_merged
+* Id
+* ActivityDate
+* TotalSteps
+* VeryActiveMinutes
+* FairlyActiveMinutes
+* LightlyActiveMinutes
+* SedentaryMinutes
+* Calories
+
+### hourlyIntensities_merged
+* Id
+* ActivityHour
+* TotalIntensity
+* AverageIntensity
+
+### minuteMETsNarrow_merged
+* Id
+* ActivityMinute
+* METs
+
+Sleep duration data to be used for supplementary explanations because of the limited availability as I mentioned.
+
+### sleepDay_merged
+* Id
+* SleepDay
+* TotalMinutesAsleep
+* TotalTimeInBed
+
+## 7. Data Cleaning
+
+### 7-1. Inspect Data
+
+The datasets were provided in two separate files covering different time periods.
+These files were combined into a single dataset before analysis.
+
+
+```{r}
+library(tidyverse)
+
+daily_34 <- read.csv("data/raw_data/dailyActivity_merged_34.csv")
+daily_45 <- read_csv("data/raw_data/dailyActivity_merged_45.csv")
+dailyActivity <- bind_rows(
+  daily_34,
+  daily_45
+)
+nrow(daily_34)
+nrow(daily_45)
+nrow(dailyActivity)
+
+```
+
+```{r}
+hourlyInt_34 <- read_csv("data/raw_data/hourlyIntensities_merged_34.csv")
+hourlyInt_45 <- read_csv("data/raw_data/hourlyIntensities_merged_45.csv")
+hourlyIntensity <- bind_rows(
+  hourlyInt_34,
+  hourlyInt_45
+)
+nrow(hourlyInt_34)
+nrow(hourlyInt_45)
+nrow(hourlyIntensity)
+
+minuteMets_34 <- read_csv("data/raw_data/minuteMETsNarrow_merged_34.csv")
+minuteMets_45 <- read_csv("data/raw_data/minuteMETsNarrow_merged_45.csv")
+minuteMETs <- bind_rows(
+  minuteMets_34,
+  minuteMets_45
+)
+nrow(minuteMets_34)
+nrow(minuteMets_45)
+nrow(minuteMETs)
+
+sleepDay <- read_csv("data/raw_data/sleepDay_merged_45.csv")
+```
+
+```{r}
+glimpse(dailyActivity)
+glimpse(hourlyIntensity)
+glimpse(minuteMETs)
+glimpse(sleepDay)
+```
+
+### 7-2. Date Type Conversion
+
+Data variables should be converted from Character type to Date or DateTime format for specifying the time range.
+
+```{r}
+dailyActivity <- dailyActivity %>% 
+  mutate(
+    ActivityDate = as.Date(
+      ActivityDate,
+      format = "%m/%d/%Y")
+  )
+range(dailyActivity$ActivityDate)
+```
+```{r}
+hourlyIntensity <- hourlyIntensity %>% 
+  mutate(
+    ActivityHour =as.POSIXct(
+      ActivityHour,
+      format = "%m/%d/%Y %I:%M:%S %p")
+  )
+range(hourlyIntensity$ActivityHour)
+```
+```{r}
+minuteMETs <-minuteMETs %>% 
+  mutate(
+    ActivityMinute =as.POSIXct(
+      ActivityMinute,
+      format ="%m/%d/%Y %I:%M:%S %p")
+  )
+range(minuteMETs$ActivityMinute)
+```
+```{r}
+sleepDay <- sleepDay %>% 
+  mutate(
+    SleepDay =as.Date(
+      SleepDay,
+      format ="%m/%d/%Y %I:%M:%S %p")
+  )
+range(sleepDay$SleepDay)
+```
+
+### 7-3. Data Validation
+
+Each table includes different number of users. The numbers are as follows:
+
+```{r}
+n_distinct(dailyActivity$Id)
+n_distinct(hourlyIntensity$Id)
+n_distinct(minuteMETs$Id)
+n_distinct(sleepDay$Id)
+```
+### 7-4. Daily-Level Aggregation
+
+To prepare the data for analysis, the data granularity should be standardized to the daily level before creating the master table.
+
+```{r}
+Intensity_daily <- hourlyIntensity %>% 
+  mutate(Date = as.Date(ActivityHour)) %>% 
+  group_by(Id,Date) %>% 
+  summarise(
+    SumIntensity = sum(TotalIntensity,na.rm = TRUE),
+    AvgIntensity = mean(AverageIntensity,na.rm = TRUE),
+    .groups = "drop"
+  )
+
+head(Intensity_daily)
+write_csv(Intensity_daily,
+          "data/cleaned_data/Intensity_daily.csv")
+```
+```{r}
+METs_daily <- minuteMETs %>% 
+  mutate(Date = as.Date(ActivityMinute)) %>% 
+  group_by(Id,Date) %>% 
+  summarise(
+    sumMETs =sum(METs,na.rm = TRUE),
+    avgMETs =mean(METs,na.rm = TRUE),
+    .groups = "drop"
+  )
+
+head(METs_daily)
+write_csv(METs_daily,
+          "data/cleaned_data/METs_daily.csv")
+```
+```{r}
+Sleep_daily <- sleepDay %>% 
+  rename(Date = SleepDay) %>% 
+  select(
+    Id,
+    Date,
+    TotalMinutesAsleep,
+    TotalTimeInBed
+  )
+
+head(Sleep_daily)
+write_csv(Sleep_daily,
+      "data/cleaned_data/Sleep_daily.csv")
+```
+```{r}
+Activity_daily <- dailyActivity %>% 
+  rename(Date = ActivityDate) %>% 
+  select(
+    Id,
+    Date,
+    TotalSteps,
+    VeryActiveMinutes,
+    FairlyActiveMinutes,
+    LightlyActiveMinutes,
+    SedentaryMinutes,
+    Calories
+  )
+
+head(Activity_daily)
+write_csv(Activity_daily,
+          "data/cleaned_data/Activity_daily.csv")
+```
+### 7-5. Finalize Master Table
+
+The four datasets above were combined to a single master table by using Id and Date as keys.
+```{r}
+master_table <- Activity_daily %>% 
+  left_join(Intensity_daily,by = c("Id","Date")) %>% 
+  left_join(METs_daily,by =c("Id","Date")) %>% 
+  left_join(Sleep_daily,by =c("Id","Date"))
+
+head(master_table)
+glimpse(master_table)
+summary(master_table)
+```
+```{r}
+n_distinct(master_table$Id)
+colSums(is.na(master_table))
+```
+```{r}
+write_csv(master_table,
+          "data/cleaned_data/master_table.csv")
+```
+
+## 8. Data Analysis
+
+### 8-1. Correlation Analysis
+
+Before creating user-level summary profiles, I explored the relationships of activity-related variables, such as calories, Intensity, and steps.
+```{r}
+activity_data <- master_table %>% 
+  select(
+    TotalSteps,
+    VeryActiveMinutes,
+    FairlyActiveMinutes,
+    LightlyActiveMinutes,
+    SedentaryMinutes,
+    Calories,
+    SumIntensity,
+    AvgIntensity,
+    sumMETs,
+    avgMETs
+  )
+
+correlation_act <- activity_data %>% 
+  cor(use = "complete.obs")
+
+correlation_act <- round(correlation_act,2)
+correlation_act
+```
+
+### 8-2. Feature Selection
+
+```{r}
+library(corrplot)
+
+corrplot(
+    correlation_act,
+    method = "color",
+    type = "upper",
+    addCoef.col = "black",
+    number.cex = 0.6,
+    tl.col = "black",
+    tl.cex = 0.7,
+    tl.srt = 45
+)
+```
+
+Based on the correlation analysis, variables with very high correlations were considered redundant, and a representative metric was selected from each category.
+
+* SumIntentisy was chosen as a major activity indicator because of very high correlations with AvgIntensity, sumMETs and avgMETs
+* TotalSteps and SedentaryMinutes were kept as essential behavioral indicators
+* VeryActiveMinutes and LightActiveMinutes were included because they show low correlations with eath other
+* Calories was also chosen because it shows moderate correlations with most variables and provides an additional perspective on energy expenditure
+
+### 8-3. User-Level Summary
+
+These six features were primarily used to create user-level summary profiles.
+Two sleep-related measures were also included as supplementary indicators.
+
+```{r}
+user_summary <- master_table %>% 
+  group_by(Id) %>% 
+  summarise(
+    
+    DaysRecorded = n(),
+    
+    AvgSteps = mean(TotalSteps,na.rm = TRUE),
+    SdSteps = sd(TotalSteps,na.rm = TRUE),
+    
+    AvgVeryActiveM = mean(VeryActiveMinutes,na.rm = TRUE),
+    AvgLightActiveM = mean(LightlyActiveMinutes,na.rm = TRUE),
+    
+    AvgSedenM = mean(SedentaryMinutes,na.rm = TRUE),
+    SdSedenM = sd(SedentaryMinutes,na.rm = TRUE),
+    
+    AvgCalories = mean(Calories,na.rm = TRUE),
+    
+    AvgSumIntensity = mean(SumIntensity,na.rm = TRUE),
+    SdSumIntensity = sd(SumIntensity,na.rm = TRUE),
+    
+    AvgSleepM = mean(TotalMinutesAsleep,na.rm = TRUE),
+    SdSleepM = sd(TotalMinutesAsleep,na.rm = TRUE),
+    AvgBedM = mean(TotalTimeInBed,na.rm = TRUE),
+    SdBedM = sd(TotalTimeInBed,na.rm = TRUE),
+    
+    .groups = "drop"
+  )
+
+head(user_summary)
+write_csv(user_summary,
+          "data/cleaned_data/user_summary.csv")
+```
+
+### 8-4. User Segmentation
+
+Before classifying users into groups, distributions of each primary variables should be visualized
+
+```{r}
+summary(user_summary)
+
+hist(user_summary$AvgSteps)
+hist(user_summary$SdSteps)
+hist(user_summary$AvgSumIntensity)
+hist(user_summary$SdSumIntensity)
+hist(user_summary$AvgSedenM)
+hist(user_summary$SdSedenM)
+hist(user_summary$AvgSleepM)
+hist(user_summary$SdSleepM)
+hist(user_summary$DaysRecorded)
+```
+
+User groups were defined using rule-based thresholds derived from the data distribution.
+
+* The third quartile (75th percentile) was used to identify Consistent Active Users, while the first quartile (25th percentile) and the number of days recorded were used for Low Engagement Users.
+* Standard deviation measures were used to capture Irregular Users.
+* Sleep length and variability were included as an optional indicator due to the limited data availability.
+
+```{r}
+user_summary<- user_summary %>% 
+  mutate(
+    UserType = case_when(
+      
+      AvgSteps >= 8000 &
+      AvgSumIntensity >= 350 &
+      AvgSedenM <= 800
+      ~ "Consistent Active Users",
+      
+      SdSteps >= 4000 |
+      SdSumIntensity>=140 |
+      SdSedenM >= 280 |
+      SdSleepM >= 110
+      ~ "Irregular Users",
+      
+      DaysRecorded <= 39 |
+      AvgSteps <= 4500 |
+      AvgSedenM >= 1100 |
+      AvgSleepM <= 340
+      ~ "Low Engagement Users",
+      
+      TRUE
+      ~ "Moderate Users"
+    )
+  )
+
+head(user_summary)
+table(user_summary$UserType)
+write_csv(user_summary,
+          "data/cleaned_data/user_summary.csv")
+```
+```{r}
+user_type_analysis <- user_summary %>% 
+  group_by(UserType) %>% 
+  summarise(
+    Users = n(),
+    
+    AvgSteps = round(mean(AvgSteps),0),
+    AvgSdSteps = round(mean(SdSteps),0),
+    AvgIntensity = round(mean(AvgSumIntensity),0),
+    AvgSdIntensity = round(mean(SdSumIntensity),0),
+    AvgSedentary = round(mean(AvgSedenM),0),
+    AvgSdSedentary = round(mean(SdSedenM),0),
+    AvgSleep = round(mean(AvgSleepM,na.rm = TRUE),0),
+    AvgDays = round(mean(DaysRecorded),1)
+  )
+
+user_type_analysis
+write_csv(user_type_analysis,
+          "data/cleaned_data/user_type_analysis.csv")
+```
+### (8-5. Check the Sleep Data Reliability)
+
+The average sleep minutes of Low Engagement Users seems unusual.
+The number should be investigated before going the next section (Business Insight).
+```{r}
+user_summary %>% 
+  filter(UserType =="Low Engagement Users") %>% 
+  select(Id,AvgSleepM)
+```
+
+Most sleep records were missing for Low Engagement Users, and the available values were very low. 
+
+
+## 9. Business Insight
+
+### 9-1. Visualise User Groups
+
+The four user groups were visualized to differentiate their characteristics
+
+```{r}
+ggplot(user_summary,
+       aes(x = UserType,
+           y = AvgSteps)) +
+    geom_boxplot(
+        aes(fill = UserType),
+        alpha = 0.6
+    ) +
+    geom_jitter(
+        width = 0.15,
+        size = 2,
+        alpha = 0.8,
+        color = "black"
+    ) +  
+    labs(title = "Average Daily Steps by User Type",
+         x = "User Type",
+         y = "Average Steps")
+
+ggplot(user_summary,
+       aes(x = UserType,
+           y = AvgSedenM)) +
+    geom_boxplot(
+        aes(fill = UserType),
+        alpha = 0.6
+    ) +
+    geom_jitter(
+        width = 0.15,
+        size = 2,
+        alpha = 0.8,
+        color = "black"
+    ) +  
+    labs(title = "Sedentary Time by User Type",
+         x = "User Type",
+         y = "Average Sedentary Minutes")
+
+ggplot(user_summary,
+       aes(x = UserType,
+           y = AvgSumIntensity)) +
+    geom_boxplot(
+        aes(fill = UserType),
+        alpha = 0.6
+    ) +
+    geom_jitter(
+        width = 0.15,
+        size = 2,
+        alpha = 0.8,
+        color = "black"
+    ) +  
+    labs(title = "Activity Intensity by User Type",
+         x = "User Type",
+         y = "Average Daily Intensity")
+
+ggplot(user_summary,
+       aes(x = UserType,
+           y = SdSteps)) +
+    geom_boxplot(
+        aes(fill = UserType),
+        alpha = 0.6
+    ) +
+    geom_jitter(
+        width = 0.15,
+        size = 2,
+        alpha = 0.8,
+        color = "black"
+    ) +  
+    labs(title = "Step Variability by User Type",
+         x = "User Type",
+         y = "Standard Deviation of Steps")
+```
+
+### 9-2. User Group Descriptions
+
+* Consistent Active Users: 
+Consistent Active Users demonstrate the highest level of daily physical activity, such as the greatest number of daily steps (over 9500 steps) and the lowest sedentary time (under 700).
+Their behavior is relatively stable, indicating that their routines have been well established.
+
+* Irregular Users: 
+Irregular Users show moderate activity levels but the highest variability in their daily behavior. This pattern suggests inconsistent engagement and their difficulty to maintain motivation and routine.
+
+* Low Engagement Users: 
+Low Engagement Users record the lowest activity levels and the highest sedentary time (over 1200 minutes). In addition, they tend to have the shortest tracking duration (38 days), suggesting limited interaction with the device.
+
+* Moderate Users: 
+Moderate users keep consistent device usage and moderate activity levels. Moreover, they show a stable daily behavior, thus, they are relatively resistant to exterior influences.
+
+## 10. Actionable Recommendations
+
+* Consistent Active Users: 
+Introduce advanced performance tracking features, achievement badges and reward systems in subscription benefits to maintain their momentum among highly active users.
+
+* Irregular Users: 
+Send reminders through healthcare applications to encourage consistent daily activity, especially when users fall behind their recent average activity levels.
+
+* Low Engagement Users: 
+Strengthen gamification features in the applications that provide frequent and achievable rewards. For instance, users can earn points simply by standing up and moving regularly throughout the day in order to reduce sedentary time. This makes them feel a sense of small but healthy accomplishment.
+
+* Moderate Users: 
+Focus on long-term education and strategies rather than short-term promotional campaigns. Notify gradual progress over time, such as stamina, sleep quality, calculated body age.
+
