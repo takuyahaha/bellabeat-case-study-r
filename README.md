@@ -8,7 +8,7 @@ The analysis uses publicly available Fitbit fitness tracker data from Kaggle to 
 ## How to View the Report
 
 Please download and open the HTML file below:
-https://takuyahaha.github.io/bellabeat-case-study-r
+[https://takuyahaha.github.io/bellabeat-case-study-r](https://takuyahaha.github.io/bellabeat-case-study-r/bellabeat_analysis_casestudy.html)
 
 ## Business Task
 
